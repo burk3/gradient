@@ -9,6 +9,7 @@ use base64::Engine as _;
 use futures::StreamExt as _;
 use sha2::{Digest, Sha256};
 use std::io::{Cursor, Read};
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -100,8 +101,20 @@ fn unpack_tarball(bytes: &[u8], dest: &Path) -> Result<i64> {
         newest = newest.max(i64::try_from(mtime).unwrap_or(i64::MAX));
 
         let path = entry.path().context("entry path")?.display().to_string();
+        let is_dir = entry.header().entry_type() == tar::EntryType::Directory;
         if !entry.unpack_in(dest).with_context(|| format!("unpacking {path}"))? {
             bail!("tar entry `{path}` escapes the extraction directory");
+        }
+
+        // Directory modes don't affect the NAR hash; a read-only one would block unpacking its children.
+        if is_dir {
+            let dir = dest.join(&path);
+            let mut perms = std::fs::metadata(&dir)
+                .with_context(|| format!("reading permissions of {path}"))?
+                .permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&dir, perms)
+                .with_context(|| format!("making {path} writable"))?;
         }
     }
 
@@ -242,6 +255,25 @@ mod tests {
 
         let err = tarball_bytes_nar_hash(tar).await.unwrap_err();
         assert!(format!("{err:#}").contains("escapes"), "unexpected error: {err:#}");
+    }
+
+    #[tokio::test]
+    async fn read_only_directories_do_not_block_extraction() {
+        let mut builder = tar::Builder::new(Vec::new());
+        let mut dir = tar::Header::new_gnu();
+        dir.set_entry_type(tar::EntryType::Directory);
+        dir.set_size(0);
+        dir.set_mode(0o555);
+        builder.append_data(&mut dir, "source/ro/", &[][..]).unwrap();
+        let mut file = tar::Header::new_gnu();
+        file.set_entry_type(tar::EntryType::Regular);
+        file.set_size(1);
+        file.set_mode(0o644);
+        builder.append_data(&mut file, "source/ro/f", &b"x"[..]).unwrap();
+        let tar = builder.into_inner().unwrap();
+
+        let got = tarball_bytes_nar_hash(tar).await.unwrap();
+        assert_eq!(got.nar_hash, expected_hash(&[("ro/f", b"x")]).await);
     }
 
     #[tokio::test]
