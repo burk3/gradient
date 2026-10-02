@@ -49,11 +49,18 @@ impl PinnedTarball {
             match key.as_str() {
                 "rev" => rev = Some(value),
                 "revCount" => {
-                    rev_count = Some(value.parse().with_context(|| format!("revCount `{value}`"))?);
+                    rev_count = Some(
+                        value
+                            .parse()
+                            .with_context(|| format!("revCount `{value}`"))?,
+                    );
                 }
                 "lastModified" => {
-                    last_modified =
-                        Some(value.parse().with_context(|| format!("lastModified `{value}`"))?);
+                    last_modified = Some(
+                        value
+                            .parse()
+                            .with_context(|| format!("lastModified `{value}`"))?,
+                    );
                 }
                 "narHash" => {}
                 _ => {
@@ -113,7 +120,10 @@ mod tests {
             Some("https://h/x")
         );
         assert_eq!(immutable_link("<https://h/x>; rel=\"preload\""), None);
-        assert_eq!(immutable_link("<https://h/x>; rel=\"immutable\"; as=x"), None);
+        assert_eq!(
+            immutable_link("<https://h/x>; rel=\"immutable\"; as=x"),
+            None
+        );
         assert_eq!(immutable_link("https://h/x"), None);
     }
 
@@ -154,13 +164,17 @@ mod tests {
     #[test]
     fn unknown_query_params_are_kept_sorted() {
         let pinned =
-            PinnedTarball::parse("https://h/x.tar.gz?z=1&rev=abc&narHash=sha256-x&a=b%20c").unwrap();
+            PinnedTarball::parse("https://h/x.tar.gz?z=1&rev=abc&narHash=sha256-x&a=b%20c")
+                .unwrap();
         assert_eq!(pinned.url, "https://h/x.tar.gz?a=b%20c&z=1");
     }
 
     #[test]
     fn link_without_rev_is_rejected() {
         let err = PinnedTarball::parse("https://h/x.tar.gz?revCount=3").unwrap_err();
-        assert!(format!("{err:#}").contains("rev"), "unexpected error: {err:#}");
+        assert!(
+            format!("{err:#}").contains("rev"),
+            "unexpected error: {err:#}"
+        );
     }
 }

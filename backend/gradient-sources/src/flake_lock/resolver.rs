@@ -349,6 +349,7 @@ struct GitlabCommit {
 
 #[cfg(test)]
 mod tests {
+    use super::super::narhash::{tarball_bytes_nar_hash, test_tarball::targz};
     use super::*;
     use std::process::Command;
 
@@ -405,8 +406,6 @@ mod tests {
             out.err()
         );
     }
-
-    use super::super::narhash::{tarball_bytes_nar_hash, test_tarball::targz};
 
     const SOURCE: &[(&str, &[u8], u64)] = &[("source/flake.nix", b"{ }", 1234)];
 

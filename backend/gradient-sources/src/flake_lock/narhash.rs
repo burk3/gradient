@@ -102,7 +102,10 @@ fn unpack_tarball(bytes: &[u8], dest: &Path) -> Result<i64> {
 
         let path = entry.path().context("entry path")?.display().to_string();
         let is_dir = entry.header().entry_type() == tar::EntryType::Directory;
-        if !entry.unpack_in(dest).with_context(|| format!("unpacking {path}"))? {
+        if !entry
+            .unpack_in(dest)
+            .with_context(|| format!("unpacking {path}"))?
+        {
             bail!("tar entry `{path}` escapes the extraction directory");
         }
 
@@ -124,7 +127,10 @@ fn unpack_tarball(bytes: &[u8], dest: &Path) -> Result<i64> {
 /// Nix hashes the sole top-level directory when there is exactly one, else the archive root.
 fn source_root(dir: &Path) -> Result<PathBuf> {
     let mut entries = std::fs::read_dir(dir).context("listing extracted tarball")?;
-    let first = entries.next().transpose().context("reading extracted entry")?;
+    let first = entries
+        .next()
+        .transpose()
+        .context("reading extracted entry")?;
     if let (Some(only), None) = (first, entries.next())
         && only.file_type().context("extracted entry type")?.is_dir()
     {
@@ -217,7 +223,10 @@ mod tests {
     async fn several_top_level_entries_are_hashed_unstripped() {
         let entries: &[(&str, &[u8], u64)] = &[("a", b"1", 1), ("b", b"2", 1)];
         let got = tarball_bytes_nar_hash(targz(entries)).await.unwrap();
-        assert_eq!(got.nar_hash, expected_hash(&[("a", b"1"), ("b", b"2")]).await);
+        assert_eq!(
+            got.nar_hash,
+            expected_hash(&[("a", b"1"), ("b", b"2")]).await
+        );
     }
 
     #[tokio::test]
@@ -227,12 +236,16 @@ mod tests {
         let mut pax = tar::Header::new_ustar();
         pax.set_entry_type(tar::EntryType::XGlobalHeader);
         pax.set_size(record.len() as u64);
-        builder.append_data(&mut pax, "pax_global_header", &record[..]).unwrap();
+        builder
+            .append_data(&mut pax, "pax_global_header", &record[..])
+            .unwrap();
         let mut file = tar::Header::new_gnu();
         file.set_entry_type(tar::EntryType::Regular);
         file.set_size(1);
         file.set_mode(0o644);
-        builder.append_data(&mut file, "repo-abc/f", &b"x"[..]).unwrap();
+        builder
+            .append_data(&mut file, "repo-abc/f", &b"x"[..])
+            .unwrap();
         let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
         enc.write_all(&builder.into_inner().unwrap()).unwrap();
 
@@ -254,7 +267,10 @@ mod tests {
         let tar = builder.into_inner().unwrap();
 
         let err = tarball_bytes_nar_hash(tar).await.unwrap_err();
-        assert!(format!("{err:#}").contains("escapes"), "unexpected error: {err:#}");
+        assert!(
+            format!("{err:#}").contains("escapes"),
+            "unexpected error: {err:#}"
+        );
     }
 
     #[tokio::test]
@@ -264,12 +280,16 @@ mod tests {
         dir.set_entry_type(tar::EntryType::Directory);
         dir.set_size(0);
         dir.set_mode(0o555);
-        builder.append_data(&mut dir, "source/ro/", &[][..]).unwrap();
+        builder
+            .append_data(&mut dir, "source/ro/", &[][..])
+            .unwrap();
         let mut file = tar::Header::new_gnu();
         file.set_entry_type(tar::EntryType::Regular);
         file.set_size(1);
         file.set_mode(0o644);
-        builder.append_data(&mut file, "source/ro/f", &b"x"[..]).unwrap();
+        builder
+            .append_data(&mut file, "source/ro/f", &b"x"[..])
+            .unwrap();
         let tar = builder.into_inner().unwrap();
 
         let got = tarball_bytes_nar_hash(tar).await.unwrap();
