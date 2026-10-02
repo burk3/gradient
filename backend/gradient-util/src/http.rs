@@ -107,6 +107,17 @@ pub fn download_client() -> &'static reqwest::Client {
         .get_or_init(|| build_download_client().expect("failed to build the download HTTP client"))
 }
 
+/// Hands 3xx responses back to the caller, for protocols that put headers on intermediate hops.
+pub fn no_redirect_download_client() -> &'static reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT.get_or_init(|| {
+        download_client_builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("failed to build the no-redirect download HTTP client")
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
