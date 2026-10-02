@@ -92,7 +92,7 @@ impl HttpRevisionResolver {
 
         let last_modified = parse_rfc3339(&commit.commit.committer.date)?;
         let tarball = format!("{GITHUB_API}/repos/{owner}/{repo}/tarball/{}", commit.sha);
-        let nar_hash = tarball_source_nar_hash(self.github_get(&tarball)).await?;
+        let nar_hash = tarball_source_nar_hash(self.github_get(&tarball)).await?.nar_hash;
 
         Ok(ResolvedRev {
             rev: commit.sha,
@@ -127,7 +127,7 @@ impl HttpRevisionResolver {
             "{GITLAB_API}/api/v4/tasks/{task}/repository/archive.tar.gz?sha={}",
             commit.id
         );
-        let nar_hash = tarball_source_nar_hash(self.gitlab_get(&tarball)).await?;
+        let nar_hash = tarball_source_nar_hash(self.gitlab_get(&tarball)).await?.nar_hash;
 
         Ok(ResolvedRev {
             rev: commit.id,

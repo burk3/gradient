@@ -2677,6 +2677,8 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+ "xz2",
+ "zstd",
 ]
 
 [[package]]

@@ -43,6 +43,8 @@ serde       = { workspace = true }
 serde_json  = { workspace = true }
 sha2        = { workspace = true }
 tar         = { workspace = true }
+xz2         = { workspace = true }
+zstd        = { workspace = true }
 tempfile    = { workspace = true }
 thiserror   = { workspace = true }
 tokio       = { workspace = true, features = ["rt", "macros", "sync", "process", "fs", "io-util", "time"] }
