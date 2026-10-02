@@ -2665,6 +2665,7 @@ dependencies = [
  "harmonia-store-remote",
  "harmonia-utils-hash",
  "hex",
+ "percent-encoding",
  "reqwest",
  "sea-orm",
  "serde",

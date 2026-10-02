@@ -8,6 +8,7 @@ pub mod generator;
 pub mod lock;
 pub mod narhash;
 pub mod resolver;
+pub mod tarball;
 
 pub use generator::{BumpedInput, FileEdit, FlakeLockGenerator, InputName, Patch, PatchGenerator};
 pub use lock::{FlakeLock, InputRef, LockedRef, Node};
