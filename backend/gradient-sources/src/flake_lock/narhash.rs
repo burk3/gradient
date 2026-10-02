@@ -102,6 +102,12 @@ fn unpack_tarball(bytes: &[u8], dest: &Path) -> Result<i64> {
 
         let path = entry.path().context("entry path")?.display().to_string();
         let is_dir = entry.header().entry_type() == tar::EntryType::Directory;
+        let rel: PathBuf = entry
+            .path()
+            .context("entry path")?
+            .components()
+            .filter(|c| matches!(c, std::path::Component::Normal(_)))
+            .collect();
         if !entry
             .unpack_in(dest)
             .with_context(|| format!("unpacking {path}"))?
@@ -109,15 +115,17 @@ fn unpack_tarball(bytes: &[u8], dest: &Path) -> Result<i64> {
             bail!("tar entry `{path}` escapes the extraction directory");
         }
 
-        // Directory modes don't affect the NAR hash; a read-only one would block unpacking its children.
+        // Directory modes don't affect the NAR hash; chmod so a read-only one doesn't block its children.
         if is_dir {
-            let dir = dest.join(&path);
-            let mut perms = std::fs::metadata(&dir)
-                .with_context(|| format!("reading permissions of {path}"))?
-                .permissions();
-            perms.set_mode(0o755);
-            std::fs::set_permissions(&dir, perms)
-                .with_context(|| format!("making {path} writable"))?;
+            let dir = dest.join(&rel);
+            let meta = std::fs::symlink_metadata(&dir)
+                .with_context(|| format!("reading permissions of {path}"))?;
+            if meta.file_type().is_dir() {
+                let mut perms = meta.permissions();
+                perms.set_mode(0o755);
+                std::fs::set_permissions(&dir, perms)
+                    .with_context(|| format!("making {path} writable"))?;
+            }
         }
     }
 
@@ -294,6 +302,40 @@ mod tests {
 
         let got = tarball_bytes_nar_hash(tar).await.unwrap();
         assert_eq!(got.nar_hash, expected_hash(&[("ro/f", b"x")]).await);
+    }
+
+    #[tokio::test]
+    async fn absolute_directory_entries_stay_inside_the_extraction_dir() {
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(outside.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut name = outside.path().display().to_string();
+        name.push('/');
+        assert!(
+            name.len() < 100,
+            "outside path too long for old name field: {name}"
+        );
+
+        let mut header = tar::Header::new_gnu();
+        header.as_old_mut().name[..name.len()].copy_from_slice(name.as_bytes());
+        header.set_entry_type(tar::EntryType::Directory);
+        header.set_size(0);
+        header.set_mode(0o555);
+        header.set_cksum();
+        let mut builder = tar::Builder::new(Vec::new());
+        builder.append(&header, &[][..]).unwrap();
+        let tar = builder.into_inner().unwrap();
+
+        let _ = tarball_bytes_nar_hash(tar).await;
+
+        assert_eq!(
+            std::fs::metadata(outside.path())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700,
+            "the directory outside the extraction dir must not be chmod'ed"
+        );
     }
 
     #[tokio::test]
