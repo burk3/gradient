@@ -21,6 +21,13 @@ pub struct ResolvedRev {
     pub ref_: Option<String>,
     pub nar_hash: String,
     pub last_modified: i64,
+    pub tarball: Option<TarballPin>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TarballPin {
+    pub url: String,
+    pub rev_count: Option<u64>,
 }
 
 #[async_trait]
@@ -99,6 +106,7 @@ impl HttpRevisionResolver {
             ref_: ref_.clone(),
             nar_hash,
             last_modified,
+            tarball: None,
         })
     }
 
@@ -134,6 +142,7 @@ impl HttpRevisionResolver {
             ref_: ref_.clone(),
             nar_hash,
             last_modified,
+            tarball: None,
         })
     }
 
@@ -153,6 +162,7 @@ impl HttpRevisionResolver {
             ref_: ref_.clone(),
             nar_hash,
             last_modified,
+            tarball: None,
         })
     }
 

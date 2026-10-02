@@ -12,4 +12,4 @@ pub mod tarball;
 
 pub use generator::{BumpedInput, FileEdit, FlakeLockGenerator, InputName, Patch, PatchGenerator};
 pub use lock::{FlakeLock, InputRef, LockedRef, Node};
-pub use resolver::{HttpRevisionResolver, ResolvedRev, RevisionResolver};
+pub use resolver::{HttpRevisionResolver, ResolvedRev, RevisionResolver, TarballPin};

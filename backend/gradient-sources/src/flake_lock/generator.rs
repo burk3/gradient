@@ -147,6 +147,14 @@ impl<R: RevisionResolver> PatchGenerator for FlakeLockGenerator<R> {
                 None => locked.remove("ref"),
             };
 
+            if let Some(pin) = resolved.tarball {
+                locked.insert("url".into(), Value::from(pin.url));
+                match pin.rev_count {
+                    Some(n) => locked.insert("revCount".into(), Value::from(n)),
+                    None => locked.remove("revCount"),
+                };
+            }
+
             bumped.push(BumpedInput {
                 name: input,
                 old_rev,
@@ -173,7 +181,7 @@ impl<R: RevisionResolver> PatchGenerator for FlakeLockGenerator<R> {
 #[cfg(test)]
 mod tests {
     use super::super::lock::LockedRef;
-    use super::super::resolver::ResolvedRev;
+    use super::super::resolver::{ResolvedRev, TarballPin};
     use super::*;
     use std::collections::HashMap;
 
@@ -184,7 +192,7 @@ mod tests {
         async fn resolve(&self, reference: &LockedRef) -> Result<ResolvedRev> {
             let key = match reference {
                 LockedRef::Github { repo, .. } => repo.clone(),
-                LockedRef::Git { url, .. } => url.clone(),
+                LockedRef::Git { url, .. } | LockedRef::Tarball { url } => url.clone(),
                 _ => anyhow::bail!("unexpected ref in test"),
             };
             self.0.get(&key).cloned().context("no canned resolution")
@@ -231,6 +239,7 @@ mod tests {
             ref_: Some("nixos-unstable".into()),
             nar_hash: "sha256-NEW0000000000000000000000000000000000000000=".into(),
             last_modified: 1800000000,
+            tarball: None,
         };
         let lockgen =
             FlakeLockGenerator::new(FakeResolver(HashMap::from([("nixpkgs".into(), resolved)])));
@@ -296,6 +305,7 @@ mod tests {
             ref_: None,
             nar_hash: "sha256-NEW0000000000000000000000000000000000000000=".into(),
             last_modified: 1800000000,
+            tarball: None,
         };
         let lockgen = FlakeLockGenerator::new(FakeResolver(HashMap::from([
             (
@@ -355,6 +365,7 @@ mod tests {
             ref_: Some("nixos-unstable".into()),
             nar_hash: "sha256-NEW0000000000000000000000000000000000000000=".into(),
             last_modified: 1800000000,
+            tarball: None,
         };
         let lockgen =
             FlakeLockGenerator::new(FakeResolver(HashMap::from([("nixpkgs".into(), resolved)])));
@@ -409,6 +420,7 @@ mod tests {
             ref_: Some("refs/heads/main".into()),
             nar_hash: "sha256-NEW0000000000000000000000000000000000000000=".into(),
             last_modified: 1800000000,
+            tarball: None,
         };
         let lockgen = FlakeLockGenerator::new(FakeResolver(HashMap::from([(
             "https://example.com/dep.git".into(),
@@ -443,6 +455,7 @@ mod tests {
             ref_: Some("nixos-unstable".into()),
             nar_hash: "sha256-OLD0000000000000000000000000000000000000000=".into(),
             last_modified: 1700000000,
+            tarball: None,
         };
         let lockgen =
             FlakeLockGenerator::new(FakeResolver(HashMap::from([("nixpkgs".into(), resolved)])));
@@ -468,5 +481,107 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("not a direct flake input"));
+    }
+
+    const FLAKEHUB_ORIGINAL: &str = "https://flakehub.com/f/NixOS/nixpkgs/0.1";
+
+    fn write_tarball_fixture(dir: &Path) {
+        let lock = format!(
+            r#"{{
+  "nodes": {{
+    "nixpkgs": {{
+      "locked": {{
+        "lastModified": 1700000000,
+        "narHash": "sha256-OLD0000000000000000000000000000000000000000=",
+        "rev": "1111111111111111111111111111111111111111",
+        "revCount": 10,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/NixOS/nixpkgs/0.1.10%2Brev-1111111111111111111111111111111111111111/aaaa/source.tar.gz"
+      }},
+      "original": {{
+        "type": "tarball",
+        "url": "{FLAKEHUB_ORIGINAL}"
+      }}
+    }},
+    "root": {{ "inputs": {{ "nixpkgs": "nixpkgs" }} }}
+  }},
+  "root": "root",
+  "version": 7
+}}
+"#
+        );
+        std::fs::write(dir.join("flake.lock"), lock).unwrap();
+    }
+
+    fn tarball_resolution(rev_count: Option<u64>) -> ResolvedRev {
+        ResolvedRev {
+            rev: "2222222222222222222222222222222222222222".into(),
+            ref_: None,
+            nar_hash: "sha256-NEW0000000000000000000000000000000000000000=".into(),
+            last_modified: 1800000000,
+            tarball: Some(TarballPin {
+                url: "https://api.flakehub.com/f/pinned/NixOS/nixpkgs/0.1.20%2Brev-2222222222222222222222222222222222222222/bbbb/source.tar.gz".into(),
+                rev_count,
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn bumps_tarball_url_rev_and_rev_count() {
+        let dir = tempfile::tempdir().unwrap();
+        write_tarball_fixture(dir.path());
+        let lockgen = FlakeLockGenerator::new(FakeResolver(HashMap::from([(
+            FLAKEHUB_ORIGINAL.into(),
+            tarball_resolution(Some(20)),
+        )])));
+
+        let patch = lockgen
+            .produce(dir.path(), &["nixpkgs".into()])
+            .await
+            .unwrap()
+            .unwrap();
+        let out = FlakeLock::parse(&patch.edits[0].contents).unwrap();
+        let node = &out.nodes["nixpkgs"];
+        let locked = node.locked.as_ref().unwrap();
+        assert_eq!(
+            locked["url"].as_str().unwrap(),
+            "https://api.flakehub.com/f/pinned/NixOS/nixpkgs/0.1.20%2Brev-2222222222222222222222222222222222222222/bbbb/source.tar.gz"
+        );
+        assert_eq!(locked["revCount"].as_u64(), Some(20));
+        assert_eq!(
+            locked["rev"].as_str().unwrap(),
+            "2222222222222222222222222222222222222222"
+        );
+        assert_eq!(locked["lastModified"].as_i64(), Some(1800000000));
+        assert!(!locked.contains_key("ref"));
+        assert_eq!(
+            node.original.as_ref().unwrap()["url"].as_str().unwrap(),
+            FLAKEHUB_ORIGINAL,
+            "original must keep tracking the version range"
+        );
+    }
+
+    #[tokio::test]
+    async fn tarball_without_rev_count_drops_the_stale_one() {
+        let dir = tempfile::tempdir().unwrap();
+        write_tarball_fixture(dir.path());
+        let lockgen = FlakeLockGenerator::new(FakeResolver(HashMap::from([(
+            FLAKEHUB_ORIGINAL.into(),
+            tarball_resolution(None),
+        )])));
+
+        let patch = lockgen
+            .produce(dir.path(), &["nixpkgs".into()])
+            .await
+            .unwrap()
+            .unwrap();
+        let out = FlakeLock::parse(&patch.edits[0].contents).unwrap();
+        assert!(
+            !out.nodes["nixpkgs"]
+                .locked
+                .as_ref()
+                .unwrap()
+                .contains_key("revCount")
+        );
     }
 }
