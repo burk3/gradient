@@ -24,7 +24,7 @@ Pull requests that bump `flake.lock`, opened only after a successful build of th
 
     1.  `*` and `?` match several inputs. A bare `*` is tracking every input.
 
-`github`, `gitlab` and `git` inputs are supported, including `git` over SSH with the project's SSH key. `tarball` inputs (`https://…` URLs) are supported when the server implements Nix's lockable tarball protocol, as FlakeHub (`https://flakehub.com/f/…`) and the NixOS channels (`https://channels.nixos.org/…`) do. A plain static tarball URL has no newer version to pin, so its update run fails.
+`github`, `gitlab` and `git` inputs are supported, including `git` over SSH with the project's SSH key. `tarball` inputs (`https://…` URLs) are supported when the server implements Nix's lockable tarball protocol, as FlakeHub (`https://flakehub.com/f/…`) and the NixOS channels (`https://channels.nixos.org/…`) do. A plain static tarball URL has no newer version to pin, so its update run fails. The server's immutable link must also carry a `rev`; FlakeHub and the NixOS channels both send one.
 
 !!! warning
     An override with a **URL** is pinning that input. The pin is blocking every update run of the task. No pull request can land while an input is held.
